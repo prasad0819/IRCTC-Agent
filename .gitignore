@@ -1,0 +1,23 @@
+# Environments
+.env
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDEs
+.vscode/
+.idea/
+
+# Downloaded files & Test Images
+*.pdf
+raw_captcha.png
+processed_captcha.png
+solve_captcha.png
