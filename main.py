@@ -355,32 +355,35 @@ def main():
                 )
                 Select(berth_dropdowns[index]).select_by_visible_text(berth)
 
-        print("Selecting Auto-upgradation...")
-        try:
-            driver.find_element(
-                By.XPATH, "//label[contains(text(), 'Consider for Auto Upgradation')]"
-            ).click()
-        except Exception:
-            pass
-
-        if os.getenv("BOOK_ONLY_IF_CONFIRMED", "False").lower() == "true":
-            print("Selecting 'Book only if confirm berths are allotted'...")
-            try:
-                driver.find_element(
-                    By.XPATH,
-                    "//label[contains(text(), 'Book only if confirm berths are allotted')]",
-                ).click()
-            except Exception:
-                pass
-
         print("Selecting Payment Category...")
         try:
-            driver.find_element(
-                By.XPATH,
-                "//label[contains(text(), 'Pay through Credit & Debit Cards')]",
-            ).click()
-        except Exception:
-            pass
+            payment_method = os.getenv("PAYMENT_METHOD", "UPI").upper()
+
+            # Grab every single radio button box on the entire webpage
+            all_radio_boxes = driver.find_elements(
+                By.XPATH, "//div[contains(@class, 'ui-radiobutton-box')]"
+            )
+
+            if payment_method == "E-WALLET":
+                # E-Wallet is always the second-to-last radio button on the page
+                radio_box = all_radio_boxes[-2]
+            else:
+                # BHIM/UPI is always the absolute LAST radio button on the page!
+                radio_box = all_radio_boxes[-1]
+
+            # Safely scroll it to the center
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'center'});", radio_box
+            )
+            time.sleep(0.5)
+
+            # Physically click it!
+            radio_box.click()
+
+            print(f"Successfully selected {payment_method} category!")
+
+        except Exception as e:
+            print(f"Failed to select payment category: {e}")
 
         print("Clicking Continue...")
         continue_btn = driver.find_element(
@@ -476,7 +479,7 @@ def main():
                 # 4. Tesseract Engine (Text Extraction)
                 text = pytesseract.image_to_string(processed, config="--psm 7").strip()
                 # Strip out any spaces or special characters Tesseract might hallucinate
-                text = "".join(e for e in text if e.isalnum())
+                text = "".join(e for e in text if e.isalnum() or e in ["=", "-", "+"])
 
                 print(f"🤖 OCR Guessed: '{text}'")
 
@@ -534,26 +537,66 @@ def main():
         print("\nPayment Page detected! Bot is resuming control...")
         time.sleep(2)
 
-        print("Selecting 'E-Wallet' tab...")
+        payment_method = os.getenv("PAYMENT_METHOD", "UPI").upper()
 
-        # We target the highly unique phrase 'Instant Payment' so it can't accidentally click a random footer link
-        ewallet_tab = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable(
-                (By.XPATH, "//*[contains(text(), 'Instant Payment')]")
+        if payment_method == "E-WALLET":
+            print("Selecting 'E-Wallet' tab...")
+            ewallet_tab = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located(
+                    (By.XPATH, "//*[contains(text(), 'Instant Payment')]")
+                )
             )
-        )
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'center'});", ewallet_tab
+            )
+            time.sleep(0.5)
+            driver.execute_script("arguments[0].click();", ewallet_tab)
+            time.sleep(2)
+        else:
+            print("Selecting 'BHIM/UPI' tab...")
+            # We split the search into 'BHIM' and 'UPI' so spaces or slashes don't break it!
+            upi_tab = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located(
+                    (
+                        By.XPATH,
+                        "//*[contains(text(), 'BHIM') and contains(text(), 'UPI')]",
+                    )
+                )
+            )
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'center'});", upi_tab
+            )
+            time.sleep(0.5)
+            driver.execute_script("arguments[0].click();", upi_tab)
+            time.sleep(1.5)
 
-        # We use a physical Selenium click. If it's the wrong element or hidden, it will crash and tell us!
-        ewallet_tab.click()
-
-        time.sleep(
-            2
-        )  # Give it 2 full seconds to expand the tab and register the selection!
+            print("Selecting 'PAYTM UPI'...")
+            # We look for the word Paytm in either the text or the Image ALT tag, completely case-insensitive
+            paytm_upi = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located(
+                    (
+                        By.XPATH,
+                        "//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'paytm') or contains(translate(@alt, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'paytm')]",
+                    )
+                )
+            )
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'center'});", paytm_upi
+            )
+            time.sleep(0.5)
+            driver.execute_script("arguments[0].click();", paytm_upi)
+            time.sleep(1)
 
         print("Clicking 'Pay & Book'...")
-        driver.execute_script("arguments[0].click();", pay_book_btn)
-
-        print("Waiting for Final Confirmation Page...")
+        # We re-fetch the button just in case the DOM refreshed when we clicked the left sidebar
+        final_pay_btn = driver.find_element(
+            By.XPATH, "//button[contains(text(), 'Pay & Book')]"
+        )
+        driver.execute_script(
+            "arguments[0].scrollIntoView({block: 'center'});", final_pay_btn
+        )
+        time.sleep(0.5)
+        driver.execute_script("arguments[0].click();", final_pay_btn)
 
         # 1. Check if it's a browser-level popup alert
         try:
