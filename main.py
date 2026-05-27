@@ -235,6 +235,32 @@ def main():
                 class_tab.click()
                 print("Checking for availability data...")
 
+                # FORCE ACTIVATE THE AVAILABILITY PANEL
+                try:
+                    # We look for the first availability panel (it usually contains a strong tag with the date/status)
+                    first_avl_panel = WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located(
+                            (
+                                By.XPATH,
+                                "//div[contains(@class, 'pre-avl') or contains(@class, 'wl')]",
+                            )
+                        )
+                    )
+                    driver.execute_script(
+                        "arguments[0].scrollIntoView({block: 'center'});",
+                        first_avl_panel,
+                    )
+                    time.sleep(0.2)
+                    # Use JS click to bypass overlapping UI
+                    driver.execute_script("arguments[0].click();", first_avl_panel)
+                    print(
+                        "Successfully clicked the availability panel to activate Book Now!"
+                    )
+                except Exception:
+                    print(
+                        "No clickable availability panel found, assuming Book Now is already active."
+                    )
+
                 # We use a short 1.5s wait so it retries instantly if data doesn't load!
                 availability_box = WebDriverWait(driver, 1.5).until(
                     EC.element_to_be_clickable(
@@ -354,6 +380,28 @@ def main():
                     By.XPATH, "//select[@formcontrolname='passengerBerthChoice']"
                 )
                 Select(berth_dropdowns[index]).select_by_visible_text(berth)
+
+        print("Selecting Reservation Choice (Same Coach)...")
+        try:
+            # 1. Click the PrimeNG dropdown to open it
+            res_dropdown = driver.find_element(
+                By.XPATH,
+                "//*[contains(text(), 'Reservation Choice')]/following-sibling::p-dropdown",
+            )
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'center'});", res_dropdown
+            )
+            res_dropdown.click()
+            time.sleep(0.5)  # Wait for the dropdown menu to animate open
+
+            # 2. Click the 'Same coach' option from the list
+            same_coach_opt = driver.find_element(
+                By.XPATH, "//li//span[contains(text(), 'allotted in same coach')]"
+            )
+            same_coach_opt.click()
+            print("Successfully locked in Same Coach preference!")
+        except Exception as e:
+            print(f"Failed to select Reservation Choice: {e}")
 
         print("Selecting Payment Category...")
         try:
