@@ -216,12 +216,14 @@ def main():
             EC.presence_of_element_located((By.XPATH, train_card_xpath))
         )
         # T - 0 Seconds Wait (Booking Phase)
-        if is_tatkal and target_booking_time:
-            print(
-                f"TATKAL HOLD: Waiting for exactly {target_booking_time.strftime('%H:%M:%S')} to strike..."
-            )
-            while datetime.datetime.now() < target_booking_time:
-                time.sleep(0.01)  # Ultra precision check!
+        if is_tatkal:
+            print("TATKAL HOLD: Waiting for exactly 11:00:00 to strike...")
+            while datetime.now() < target_booking_time:
+                time.sleep(0.01)  # Waiting for the exact millisecond
+
+            # --- ADD THIS DELAY ---
+            print("Target time reached! Delaying 0.5s to let IRCTC database refresh...")
+            time.sleep(0.5)
 
         print(f"Clicking on Class: {os.getenv('CLASS')}...")
         class_tab = train_card.find_element(
@@ -655,43 +657,74 @@ def main():
         except Exception:
             pass
 
-        # 2. Wait for the new CONFIRM page to load (up to 30 seconds)
-        try:
-            # We look for both 'Confirm' and 'CONFIRM' to beat the case-sensitivity!
-            confirm_btn = WebDriverWait(driver, 30).until(
-                EC.element_to_be_clickable(
-                    (
+        print("\nWaiting for post-payment redirect... (This can take up to 5 minutes)")
+        # This master loop checks the screen every second for 5 minutes after payment
+        post_payment_resolved = False
+        start_wait = time.time()
+
+        while not post_payment_resolved and (time.time() - start_wait) < 300:
+            try:
+                # 1. Check if the ticket successfully booked (look for the Print Ticket button)
+                driver.find_element(
+                    By.XPATH,
+                    "//*[contains(text(), 'Print Ticket') or contains(text(), 'Print E-Ticket')]",
+                )
+                post_payment_resolved = True
+                print("Ticket Success Page Detected!")
+                break
+            except Exception:
+                pass
+            try:
+                # 2. Destroy the "Rate your experience / Skip" review dialog that spawns on the success page
+                skip_btn = driver.find_element(
+                    By.XPATH, "//button[contains(text(), 'Skip')]"
+                )
+                driver.execute_script("arguments[0].click();", skip_btn)
+                print("Clicked Skip on review popup...")
+                time.sleep(1)
+            except Exception:
+                pass
+
+            try:
+                # 3. Handle Post-Payment Waitlist / Vikalp / Confirmation screens!
+                book_only_confirmed = (
+                    os.getenv("BOOK_ONLY_IF_CONFIRMED", "False").upper() == "TRUE"
+                )
+
+                if book_only_confirmed:
+                    # Find Cancel, Not Agree, or No
+                    abort_btn = driver.find_element(
                         By.XPATH,
-                        "//button[contains(text(), 'Confirm') or contains(text(), 'CONFIRM')]",
+                        "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'cancel') or contains(text(), 'Not Agree') or normalize-space(text())='No']",
                     )
-                )
-            )
-            # Scroll it into view just in case it's off-screen
-            driver.execute_script(
-                "arguments[0].scrollIntoView({block: 'center'});", confirm_btn
-            )
-            time.sleep(1)
-            driver.execute_script("arguments[0].click();", confirm_btn)
-            print("Successfully clicked the final CONFIRM button.")
-        except Exception:
-            print("Failed to find the final CONFIRM button.")
+                    driver.execute_script(
+                        "arguments[0].scrollIntoView({block: 'center'});", abort_btn
+                    )
+                    time.sleep(0.5)
+                    driver.execute_script("arguments[0].click();", abort_btn)
+                    print(
+                        "⚠️ Post-Payment Waitlist/Vikalp Screen Detected! BOOK_ONLY_IF_CONFIRMED is True. Clicked Cancel/Not Agree!"
+                    )
+                    time.sleep(2)
+                else:
+                    # Find Proceed, Agree, Confirm, or Yes
+                    proceed_btn = driver.find_element(
+                        By.XPATH,
+                        "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'proceed') or contains(text(), 'Agree') or contains(text(), 'Confirm') or contains(text(), 'CONFIRM') or normalize-space(text())='Yes']",
+                    )
+                    driver.execute_script(
+                        "arguments[0].scrollIntoView({block: 'center'});", proceed_btn
+                    )
+                    time.sleep(0.5)
+                    driver.execute_script("arguments[0].click();", proceed_btn)
+                    print(
+                        "✅ Post-Payment Screen Detected! Clicked Proceed/Confirm/Yes!"
+                    )
+                    time.sleep(2)
+            except Exception:
+                pass
 
-        print("\nWaiting for success page... (This can take up to 5 minutes)")
-        # 5-minute wait for IRCTC's slow ticketing queue
-        success_wait = WebDriverWait(driver, 300)
-
-        # 1. Click Skip on the Review Dialog (if it appears)
-        try:
-            skip_btn = success_wait.until(
-                EC.element_to_be_clickable(
-                    (By.XPATH, "//button[contains(text(), 'Skip')]")
-                )
-            )
-            print("Success page loaded! Clicking Skip on review popup...")
-            driver.execute_script("arguments[0].click();", skip_btn)
-            time.sleep(2)
-        except Exception:
-            print("No Skip button found or success page took too long.")
+            time.sleep(1)  # Wait 1 second before scanning the screen again
 
         # Save the main window ID so we can come back to it
         main_window = driver.current_window_handle
