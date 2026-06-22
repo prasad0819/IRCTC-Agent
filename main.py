@@ -66,17 +66,46 @@ def main():
         print("Opening IRCTC Website...")
         driver.get("https://www.irctc.co.in/nget/train-search")
 
-        print("Checking for alert popups...")
+        print("Checking for Language and Advisory popups...")
+
+        # 1. Check for the new Language Selection popup
         try:
-            popup_btn = WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable(
-                    (By.XPATH, "//button[contains(text(), 'OK')]")
+            # Wait up to 5 seconds for the language popup
+            english_btn = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located(
+                    (
+                        By.XPATH,
+                        "//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'english')]",
+                    )
                 )
             )
-            popup_btn.click()
-            print("Popup closed.")
+            driver.execute_script("arguments[0].click();", english_btn)
+            print("Selected English language!")
+
+            # Sometimes a Submit button needs to be clicked after selecting the language
+            time.sleep(0.5)
+            try:
+                submit_btn = driver.find_element(
+                    By.XPATH,
+                    "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'submit')]",
+                )
+                driver.execute_script("arguments[0].click();", submit_btn)
+            except Exception:
+                pass
         except Exception:
-            print("No popup found, continuing...")
+            pass
+
+        # 2. Check for the standard Health/Advisory popup (The "OK" button)
+        try:
+            alert_ok = driver.find_element(
+                By.XPATH, "//button[contains(text(), 'OK') or contains(text(), 'OKAY')]"
+            )
+            driver.execute_script("arguments[0].click();", alert_ok)
+            print("Dismissed advisory popup.")
+        except Exception:
+            pass
+
+        print("Popup check complete, continuing...")
 
         print("Clicking the Login button...")
         login_btn = wait.until(
